@@ -96,6 +96,8 @@ object ImageCache {
             var sample = 1
             val short = minOf(bounds.outWidth, bounds.outHeight)
             while (short / (sample * 2) >= target) sample *= 2
+            // Very large originals (50 MP and up) are decoded smaller so they fit in memory.
+            while ((bounds.outWidth.toLong() / sample) * (bounds.outHeight.toLong() / sample) > 14_000_000L) sample *= 2
             val opts = BitmapFactory.Options().apply { inSampleSize = sample }
             var bmp: Bitmap = BitmapFactory.decodeFile(path, opts) ?: return null
             if (exif) {

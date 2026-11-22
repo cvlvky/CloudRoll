@@ -54,7 +54,8 @@ class PlaybackService : MediaSessionService() {
     /** The media id is "chatId:messageId:fileId"; the file id becomes the address the player reads. */
     private fun withUri(item: MediaItem): MediaItem {
         val fileId = item.mediaId.substringAfterLast(':').toIntOrNull() ?: return item
-        return item.buildUpon().setUri(tdFileUri(fileId)).build()
+        val mime = item.mediaMetadata.extras?.getString("mime")?.takeIf { it.startsWith("audio/") || it.startsWith("video/") }
+        return item.buildUpon().setUri(tdFileUri(fileId, mime)).build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session

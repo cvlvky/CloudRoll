@@ -281,6 +281,12 @@ private fun PhotoPage(m: TgMedia, onTap: () -> Unit) {
     }
 }
 
+/** The container type for the player, from Telegram's MIME type or the file name. */
+private fun streamType(m: TgMedia): String? {
+    val t = if (m.mime.isBlank() || m.mime == "application/octet-stream") com.cvlvky.cloudroll.tg.guessMime(m.fileName) else m.mime
+    return t.takeIf { it.startsWith("video/") || it.startsWith("audio/") }
+}
+
 @OptIn(UnstableApi::class)
 @Composable
 private fun VideoPage(m: TgMedia, active: Boolean, onControls: (Boolean) -> Unit) {
@@ -296,7 +302,7 @@ private fun VideoPage(m: TgMedia, active: Boolean, onControls: (Boolean) -> Unit
             .setMediaSourceFactory(DefaultMediaSourceFactory(TdDataSource.Factory()))
             .build()
             .apply {
-                setMediaItem(MediaItem.fromUri(tdFileUri(m.file.id)))
+                setMediaItem(MediaItem.fromUri(tdFileUri(m.file.id, streamType(m))))
                 repeatMode = if (m.kind == com.cvlvky.cloudroll.tg.Kind.GIF) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
                 prepare()
                 playWhenReady = true

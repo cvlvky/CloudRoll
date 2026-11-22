@@ -18,8 +18,15 @@ import java.io.InterruptedIOException
 import java.io.RandomAccessFile
 import dev.g000sha256.tdl.dto.File as TdFile
 
-/** `tdfile://<fileId>`: a Telegram file the player reads while TDLib downloads it. */
-fun tdFileUri(fileId: Int): Uri = Uri.Builder().scheme("tdfile").authority(fileId.toString()).build()
+/**
+ * `tdfile://<fileId>?type=<mime>`: a Telegram file the player reads while TDLib downloads it.
+ * The type lets the player try the right file reader first (an MKV has no file name here).
+ */
+fun tdFileUri(fileId: Int, mime: String? = null): Uri {
+    val b = Uri.Builder().scheme("tdfile").authority(fileId.toString())
+    if (!mime.isNullOrBlank() && mime != "application/octet-stream") b.appendQueryParameter("type", mime)
+    return b.build()
+}
 
 fun fileIdOf(uri: Uri): Int? = uri.authority?.toIntOrNull()
 
@@ -45,12 +52,17 @@ class TdDataSource : BaseDataSource(true) {
     private var lastRequestAt = -1L
     private var lastRequestTime = 0L
 
+    private var headers: Map<String, List<String>> = emptyMap()
+
     override fun getUri(): Uri? = uri
+
+    override fun getResponseHeaders(): Map<String, List<String>> = headers
 
     override fun open(dataSpec: DataSpec): Long {
         transferInitializing(dataSpec)
         uri = dataSpec.uri
         fileId = fileIdOf(dataSpec.uri) ?: throw IOException("Not a Telegram file: ${dataSpec.uri}")
+        headers = dataSpec.uri.getQueryParameter("type")?.let { mapOf("Content-Type" to listOf(it)) } ?: emptyMap()
         position = dataSpec.position
         val client = Tg.client ?: throw IOException("Not connected to Telegram")
         val f = blocking(OPEN_TIMEOUT_MS) { client.getFile(fileId = fileId).orThrow() }
@@ -174,6 +186,7 @@ class TdDataSource : BaseDataSource(true) {
     override fun close() {
         closeFile()
         uri = null
+        headers = emptyMap()
         file = null
         if (opened) {
             opened = false

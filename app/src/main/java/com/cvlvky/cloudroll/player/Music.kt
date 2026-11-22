@@ -119,7 +119,10 @@ object Music {
             .setAlbumTitle(Tg.chatTitle(m.chatId))
             .setIsPlayable(true)
             .setIsBrowsable(false)
-            .setExtras(Bundle().apply { putLong("chatId", m.chatId) })
+            .setExtras(Bundle().apply {
+                putLong("chatId", m.chatId)
+                putString("mime", m.mime)
+            })
             .build()
         return MediaItem.Builder()
             .setMediaId("${m.chatId}:${m.messageId}:${m.file.id}")

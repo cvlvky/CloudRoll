@@ -206,7 +206,7 @@ object BackupEngine {
                             }
                         }
                         try {
-                            withTimeoutOrNull(60_000L + item.size / 40L) {
+                            withTimeoutOrNull(300_000L + item.size / 40L) {
                                 Tg.sendResults.first { it.oldMessageId == tempId }
                             }
                         } finally {
@@ -231,6 +231,8 @@ object BackupEngine {
                     return Outcome.FAILED
                 }
                 Db.markBackedUp(item.key, item.id, item.uri.toString(), item.size, chatId, result.newMessageId)
+                // A steady pace keeps Telegram from asking to slow down on a big first backup.
+                delay(1_500)
                 return Outcome.OK
             }
         } finally {

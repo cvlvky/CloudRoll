@@ -358,6 +358,7 @@ object Tg {
     fun saveKeys(id: Int, hash: String) {
         Prefs.apiId.value = id
         Prefs.apiHash.value = hash.trim()
+        if (client == null) File(appContext.filesDir, "tdlib").deleteRecursively()
         restartClient()
     }
 
