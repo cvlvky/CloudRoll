@@ -19,7 +19,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,10 +54,10 @@ private data class Tab(val label: String, val icon: ImageVector)
 
 private val tabs = listOf(
     Tab("Gallery", Icons.Filled.PhotoLibrary),
+    Tab("Movies", Icons.Filled.Movie),
     Tab("Chats", Icons.Filled.Chat),
     Tab("Music", Icons.Filled.LibraryMusic),
     Tab("Backup", Icons.Filled.CloudUpload),
-    Tab("Settings", Icons.Filled.Settings),
 )
 
 /** The signed-in app: the five tabs, with screens opened on top of them. */
@@ -66,6 +66,13 @@ fun MainApp() {
     val holder = rememberSaveableStateHolder()
     val top = Nav.stack.lastOrNull()
     BackHandler(enabled = top != null) { Nav.back() }
+    val link by DeepLinks.pending
+    LaunchedEffect(link) {
+        link?.let {
+            DeepLinks.pending.value = null
+            Nav.go(it)
+        }
+    }
     Box(Modifier.fillMaxSize()) {
         if (top == null) {
             holder.SaveableStateProvider("home") { HomeTabs() }
@@ -77,6 +84,9 @@ fun MainApp() {
                         is Screen.Viewer -> ViewerScreen(top.listId, top.index)
                         Screen.Player -> PlayerScreen()
                         Screen.Hidden -> HiddenChatsScreen()
+                        Screen.Settings -> SettingsScreen()
+                        is Screen.Movie -> MovieScreen(top.id, top.title, top.year)
+                        is Screen.TgSearch -> TgSearchScreen(top.query)
                     }
                 }
             }
@@ -109,10 +119,10 @@ private fun HomeTabs() {
             holder.SaveableStateProvider("tab$tab") {
                 when (tab) {
                     0 -> GalleryScreen()
-                    1 -> ChatsScreen()
-                    2 -> MusicScreen()
-                    3 -> BackupScreen()
-                    else -> SettingsScreen()
+                    1 -> MoviesScreen()
+                    2 -> ChatsScreen()
+                    3 -> MusicScreen()
+                    else -> BackupScreen()
                 }
             }
         }

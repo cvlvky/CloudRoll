@@ -83,7 +83,7 @@ fun ChatsScreen() {
             .sortedWith(compareByDescending<ChatInfo> { Tg.isSavedMessages(it) }.thenByDescending { it.order })
     }
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Chats") })
+        TopAppBar(title = { Text("Chats") }, actions = { SettingsAction() })
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },

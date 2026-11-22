@@ -24,6 +24,39 @@ sealed interface Screen {
     data object Hidden : Screen {
         override val key get() = "hidden"
     }
+
+    data object Settings : Screen {
+        override val key get() = "settings"
+    }
+
+    /** A film's page. [title] and [year] are only hints shown while TMDB answers. */
+    data class Movie(val id: Int, val title: String = "", val year: Int = 0) : Screen {
+        override val key get() = "movie:$id"
+    }
+
+    /** Telegram videos matching some text (series, or a film TMDB does not know). */
+    data class TgSearch(val query: String) : Screen {
+        override val key get() = "tgsearch:$query"
+    }
+}
+
+/** A screen asked for from outside (a cloudroll:// link from ReelPulse), opened once signed in. */
+object DeepLinks {
+    val pending = androidx.compose.runtime.mutableStateOf<Screen?>(null)
+
+    /** cloudroll://movie?tmdb=123&kind=movie&title=Leo&year=2023 */
+    fun parse(uri: android.net.Uri?): Screen? {
+        if (uri == null || uri.scheme != "cloudroll") return null
+        val title = uri.getQueryParameter("title").orEmpty()
+        val year = uri.getQueryParameter("year")?.toIntOrNull() ?: 0
+        val id = uri.getQueryParameter("tmdb")?.toIntOrNull()
+        val kind = uri.getQueryParameter("kind") ?: "movie"
+        return when {
+            id != null && kind == "movie" -> Screen.Movie(id, title, year)
+            title.isNotBlank() -> Screen.TgSearch(title)
+            else -> null
+        }
+    }
 }
 
 /** A plain back stack: the home tabs are always at the bottom. */

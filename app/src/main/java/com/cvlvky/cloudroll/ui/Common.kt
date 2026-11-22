@@ -3,10 +3,7 @@ package com.cvlvky.cloudroll.ui
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import android.media.ExifInterface
 import android.net.Uri
 import android.util.LruCache
 import android.widget.Toast
@@ -45,8 +42,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,25 +53,21 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.cvlvky.cloudroll.tg.ChatInfo
 import com.cvlvky.cloudroll.tg.Kind
 import com.cvlvky.cloudroll.tg.Tg
 import com.cvlvky.cloudroll.tg.TgMedia
 import com.cvlvky.cloudroll.util.Fmt
 import dev.g000sha256.tdl.dto.Minithumbnail
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.File
 import dev.g000sha256.tdl.dto.File as TdFile
 
-/** Decoded pictures, kept while memory allows. */
+/** Tiny blurred previews Telegram sends inside each message, decoded once. */
 object ImageCache {
-    private val cache = object : LruCache<String, ImageBitmap>((Runtime.getRuntime().maxMemory() / 6).toInt()) {
-        override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
-    }
-    private val minis = LruCache<Int, ImageBitmap>(400)
-
-    fun get(key: String): ImageBitmap? = cache.get(key)
+    private val minis = LruCache<Int, ImageBitmap>(600)
 
     fun mini(m: Minithumbnail): ImageBitmap? {
         val k = m.data.contentHashCode()
@@ -85,49 +80,15 @@ object ImageCache {
         minis.put(k, b)
         return b
     }
-
-    /** Decodes [path] at about [target] pixels on its short side, turned the right way up. */
-    fun load(key: String, path: String, target: Int, exif: Boolean): ImageBitmap? {
-        cache.get(key)?.let { return it }
-        return try {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeFile(path, bounds)
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-            var sample = 1
-            val short = minOf(bounds.outWidth, bounds.outHeight)
-            while (short / (sample * 2) >= target) sample *= 2
-            // Very large originals (50 MP and up) are decoded smaller so they fit in memory.
-            while ((bounds.outWidth.toLong() / sample) * (bounds.outHeight.toLong() / sample) > 14_000_000L) sample *= 2
-            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-            var bmp: Bitmap = BitmapFactory.decodeFile(path, opts) ?: return null
-            if (exif) {
-                val o = try {
-                    ExifInterface(path).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-                } catch (e: Exception) {
-                    ExifInterface.ORIENTATION_NORMAL
-                }
-                val deg = when (o) {
-                    ExifInterface.ORIENTATION_ROTATE_90 -> 90f
-                    ExifInterface.ORIENTATION_ROTATE_180 -> 180f
-                    ExifInterface.ORIENTATION_ROTATE_270 -> 270f
-                    else -> 0f
-                }
-                if (deg != 0f) {
-                    bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(deg) }, true)
-                }
-            }
-            bmp.asImageBitmap().also { cache.put(key, it) }
-        } catch (e: OutOfMemoryError) {
-            null
-        } catch (e: Exception) {
-            null
-        }
-    }
 }
 
+/** The local path of a Telegram file that is already fully on the phone, or null. */
+fun readyPath(file: TdFile?): String? =
+    file?.takeIf { it.local.isDownloadingCompleted && it.local.path.isNotEmpty() }?.local?.path
+
 /**
- * A Telegram picture: the tiny blurred preview at once, then the real one when it has downloaded.
- * [target] is the wanted size in pixels on the short side.
+ * A Telegram picture: the tiny blurred preview at once, then the real one once TDLib has it.
+ * Coil decodes it at the size it is drawn, keeps it in memory, and turns photos the right way up.
  */
 @Composable
 fun TdImage(
@@ -139,23 +100,45 @@ fun TdImage(
     contentScale: ContentScale = ContentScale.Crop,
     exif: Boolean = false,
 ) {
-    val key = file?.let { "${it.id}@$target" }
-    var bitmap by remember(key) { mutableStateOf(key?.let { ImageCache.get(it) }) }
-    val placeholder = remember(mini) { mini?.let { ImageCache.mini(it) } }
-    LaunchedEffect(key) {
-        if (file == null || key == null || bitmap != null) return@LaunchedEffect
-        val path = Tg.localPath(file, priority) ?: return@LaunchedEffect
-        bitmap = withContext(Dispatchers.IO) { ImageCache.load(key, path, target, exif) }
+    val ctx = LocalContext.current
+    var path by remember(file?.id) { mutableStateOf(readyPath(file)) }
+    LaunchedEffect(file?.id) {
+        if (file != null && path == null) path = Tg.localPath(file, priority)
     }
-    DisposableEffect(key) {
+    DisposableEffect(file?.id) {
         onDispose {
-            if (file != null && bitmap == null) Tg.cancelDownload(file.id, onlyIfPending = true)
+            if (file != null && path == null) Tg.cancelDownload(file.id, onlyIfPending = true)
         }
     }
+    val placeholder = remember(mini) { mini?.let { ImageCache.mini(it) }?.let { BitmapPainter(it) } }
     Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
-        val img = bitmap ?: placeholder
-        if (img != null) {
-            Image(img, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = contentScale)
+        val p = path
+        if (p != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(ctx).data(File(p)).crossfade(160).build(),
+                contentDescription = null,
+                placeholder = placeholder,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale,
+            )
+        } else if (placeholder != null) {
+            Image(placeholder, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = contentScale)
+        }
+    }
+}
+
+/** A picture from the web (movie posters, cast photos, streaming logos), cached on the phone. */
+@Composable
+fun NetImage(url: String?, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop) {
+    val ctx = LocalContext.current
+    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
+        if (url != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(ctx).data(url).crossfade(200).build(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale,
+            )
         }
     }
 }

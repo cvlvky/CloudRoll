@@ -77,6 +77,36 @@ object Prefs {
     // Small one-time markers
     val askedNotifications = bool("asked_notifications", false)
 
+    // Movies (TMDB and OMDb keys are free; the same keys as ReelPulse work here)
+    val tmdbKey = str("tmdb_key", "")
+    val omdbKey = str("omdb_key", "")
+    val movieLangs = strings("movie_langs")
+    val movieRegion = str("movie_region", "IN")
+    val findMovies = bool("find_movies", true)
+
+    // Gallery and viewer
+    val gridColumns = int("grid_columns", 4)
+    val starred = strings("starred")
+    val resumeVideos = bool("resume_videos", true)
+    val pip = bool("pip", true)
+
+    /** The movie languages chosen, Malayalam, Tamil and English when none were chosen. */
+    fun langs(): List<String> = movieLangs.value.toList().ifEmpty { listOf("ml", "ta", "en") }
+
+    fun isStarred(key: String) = starred.value.contains(key)
+
+    fun toggleStarred(key: String) {
+        val s = starred.value.toMutableSet()
+        if (!s.remove(key)) s.add(key)
+        starred.value = s
+    }
+
+    fun setStarred(keys: Collection<String>, on: Boolean) {
+        val s = starred.value.toMutableSet()
+        if (on) s.addAll(keys) else s.removeAll(keys.toSet())
+        starred.value = s
+    }
+
     fun isHidden(chatId: Long) = hiddenChats.value.contains(chatId.toString())
 
     fun toggleHidden(chatId: Long) {
@@ -99,5 +129,6 @@ object Prefs {
         backupLastRun.value = 0L
         favourites.value = emptySet()
         hiddenChats.value = emptySet()
+        starred.value = emptySet()
     }
 }

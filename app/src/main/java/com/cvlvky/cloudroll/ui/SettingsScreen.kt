@@ -7,6 +7,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import com.cvlvky.cloudroll.data.Db
+import androidx.compose.material.icons.filled.PictureInPicture
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.Code
@@ -68,10 +80,25 @@ fun SettingsScreen() {
     var limitDialog by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
+    var keyDialog by remember { mutableStateOf<String?>(null) }
+    var langDialog by remember { mutableStateOf(false) }
+    var regionDialog by remember { mutableStateOf(false) }
+    var gridDialog by remember { mutableStateOf(false) }
+    val tmdbKey by Prefs.tmdbKey.flow.collectAsState()
+    val omdbKey by Prefs.omdbKey.flow.collectAsState()
+    val langsSet by Prefs.movieLangs.flow.collectAsState()
+    val region by Prefs.movieRegion.flow.collectAsState()
+    val findMovies by Prefs.findMovies.flow.collectAsState()
+    val resume by Prefs.resumeVideos.flow.collectAsState()
+    val pip by Prefs.pip.flow.collectAsState()
+    val grid by Prefs.gridColumns.flow.collectAsState()
     LaunchedEffect(Unit) { cache = Tg.cacheSize() }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Settings") })
+        TopAppBar(
+            title = { Text("Settings") },
+            navigationIcon = { androidx.compose.material3.IconButton(onClick = { Nav.back() }) { androidx.compose.material3.Icon(Icons.Filled.ArrowBack, "Back") } },
+        )
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             SectionLabel("Account")
             val name = listOfNotNull(me?.firstName, me?.lastName).joinToString(" ").trim().ifBlank { "Telegram account" }
@@ -82,6 +109,46 @@ fun SettingsScreen() {
             ActionRow(Icons.Filled.Brightness6, "Theme", listOf("Same as the phone", "Light", "Dark")[theme.coerceIn(0, 2)]) { themeDialog = true }
             SwitchRow(Icons.Filled.Palette, "Colours from the wallpaper", "Use Android's colours from your wallpaper (Android 12 and newer)", dynamic) {
                 Prefs.dynamicColor.value = it
+            }
+
+            SectionLabel("Movies")
+            ActionRow(
+                Icons.Filled.Movie,
+                "TMDB key",
+                when {
+                    tmdbKey.isNotBlank() -> "Set. Posters, new releases and OTT come from TMDB"
+                    BuildConfig.TMDB_KEY.isNotBlank() -> "Using the key built into this app"
+                    else -> "Not set. Use the same free key as ReelPulse"
+                },
+            ) { keyDialog = "tmdb" }
+            ActionRow(
+                Icons.Filled.Star,
+                "OMDb key (optional)",
+                if (omdbKey.isNotBlank() || BuildConfig.OMDB_KEY.isNotBlank()) "Set. IMDb, Rotten Tomatoes and Metacritic scores" else "Adds IMDb and Rotten Tomatoes scores",
+            ) { keyDialog = "omdb" }
+            ActionRow(Icons.Filled.Language, "Film languages", Prefs.langs().joinToString(", ") { com.cvlvky.cloudroll.movies.MOVIE_LANGS[it] ?: it }) { langDialog = true }
+            ActionRow(Icons.Filled.Public, "Streaming country", com.cvlvky.cloudroll.movies.MOVIE_REGIONS[region] ?: region) { regionDialog = true }
+            SwitchRow(Icons.Filled.Search, "Find films in my Telegram", "Matches the videos in your chats with TMDB, by their file names", findMovies) {
+                Prefs.findMovies.value = it
+            }
+            ActionRow(Icons.Filled.Refresh, "Match the films again", "Forgets the matches and looks every video up again") {
+                Db.clearMatches()
+                com.cvlvky.cloudroll.movies.Tmdb.clearCache()
+                MovieRows.clear()
+                scope.launch { com.cvlvky.cloudroll.movies.TgMovies.scanLibrary(force = true) }
+                toast(ctx, "Matching again")
+            }
+            if (com.cvlvky.cloudroll.movies.ReelPulse.installed(ctx)) {
+                ActionRow(Icons.Filled.MenuBook, "Open ReelPulse", "Your diary, watchlist and OTT alerts") { com.cvlvky.cloudroll.movies.ReelPulse.launch(ctx) }
+            }
+
+            SectionLabel("Photos and videos")
+            ActionRow(Icons.Filled.GridView, "Photos in a row", "$grid. You can also pinch the grid with two fingers") { gridDialog = true }
+            SwitchRow(Icons.Filled.History, "Resume videos", "Start videos where you stopped, and list them in Continue watching", resume) {
+                Prefs.resumeVideos.value = it
+            }
+            SwitchRow(Icons.Filled.PictureInPicture, "Picture-in-picture", "Keep a video playing in a small window when you leave the app", pip) {
+                Prefs.pip.value = it
             }
 
             SectionLabel("Privacy")
@@ -168,6 +235,66 @@ fun SettingsScreen() {
             }
         }
     }
+    keyDialog?.let { which ->
+        KeyDialog(
+            title = if (which == "tmdb") "TMDB key" else "OMDb key",
+            hint = if (which == "tmdb") "themoviedb.org → Settings → API: the API Key (v3) or the API Read Access Token" else "omdbapi.com → API Key (free)",
+            initial = if (which == "tmdb") Prefs.tmdbKey.value else Prefs.omdbKey.value,
+            link = if (which == "tmdb") "https://www.themoviedb.org/settings/api" else "https://www.omdbapi.com/apikey.aspx",
+            onDismiss = { keyDialog = null },
+        ) { v ->
+            if (which == "tmdb") Prefs.tmdbKey.value = v else Prefs.omdbKey.value = v
+            com.cvlvky.cloudroll.movies.Tmdb.clearCache()
+            MovieRows.clear()
+            keyDialog = null
+        }
+    }
+    if (langDialog) {
+        val all = com.cvlvky.cloudroll.movies.MOVIE_LANGS
+        AlertDialog(
+            onDismissRequest = { langDialog = false },
+            title = { Text("Film languages") },
+            text = {
+                val chosen = langsSet.toList().ifEmpty { listOf("ml", "ta", "en") }
+                Column {
+                    all.forEach { (code, name) ->
+                        val on = code in chosen
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                val now = chosen.toMutableSet()
+                                if (on) {
+                                    if (now.size > 1) now.remove(code)
+                                } else {
+                                    now.add(code)
+                                }
+                                Prefs.movieLangs.value = now
+                            }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            androidx.compose.material3.Checkbox(checked = on, onCheckedChange = null)
+                            Text(name)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { langDialog = false }) { Text("Done") } },
+        )
+    }
+    if (regionDialog) {
+        val codes = com.cvlvky.cloudroll.movies.MOVIE_REGIONS.keys.toList()
+        ChoiceDialog("Streaming country", codes.map { com.cvlvky.cloudroll.movies.MOVIE_REGIONS[it] ?: it }, codes.indexOf(region).coerceAtLeast(0), onDismiss = { regionDialog = false }) {
+            Prefs.movieRegion.value = codes[it]
+            MovieRows.clear()
+            regionDialog = false
+        }
+    }
+    if (gridDialog) {
+        val options = (2..7).toList()
+        ChoiceDialog("Photos in a row", options.map { "$it" }, options.indexOf(grid).coerceAtLeast(0), onDismiss = { gridDialog = false }) {
+            Prefs.gridColumns.value = options[it]
+            gridDialog = false
+        }
+    }
     if (confirmLogout) {
         AlertDialog(
             onDismissRequest = { confirmLogout = false },
@@ -205,5 +332,29 @@ fun ChoiceDialog(title: String, options: List<String>, selected: Int, onDismiss:
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
+}
+
+@Composable
+fun KeyDialog(title: String, hint: String, initial: String, link: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    val ctx = LocalContext.current
+    var value by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                Text(hint, style = MaterialTheme.typography.bodySmall)
+                androidx.compose.material3.OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it.trim() },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(onClick = { openUrl(ctx, link) }) { Text("Get a free key") }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(value) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

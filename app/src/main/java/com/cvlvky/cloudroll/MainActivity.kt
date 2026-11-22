@@ -1,6 +1,7 @@
 package com.cvlvky.cloudroll
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -33,10 +34,12 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.cvlvky.cloudroll.data.Prefs
+import com.cvlvky.cloudroll.player.ActiveVideo
 import com.cvlvky.cloudroll.player.Music
 import com.cvlvky.cloudroll.tg.Auth
 import com.cvlvky.cloudroll.tg.Tg
 import com.cvlvky.cloudroll.ui.CloudRollTheme
+import com.cvlvky.cloudroll.ui.DeepLinks
 import com.cvlvky.cloudroll.ui.MainApp
 import com.cvlvky.cloudroll.ui.SetupFlow
 import com.cvlvky.cloudroll.ui.UpdatePrompt
@@ -54,6 +57,8 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         Tg.init(applicationContext)
+        addOnPictureInPictureModeChangedListener { info -> ActiveVideo.inPip.value = info.isInPictureInPictureMode }
+        if (savedInstanceState == null) openLink(intent)
         prompt = BiometricPrompt(
             this,
             ContextCompat.getMainExecutor(this),
@@ -85,6 +90,23 @@ class MainActivity : FragmentActivity() {
             }
         }
         if (locked.value) unlock()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openLink(intent)
+    }
+
+    /** cloudroll:// links, for example "Watch from Telegram" in ReelPulse. They open once the app is unlocked and signed in. */
+    private fun openLink(intent: Intent?) {
+        DeepLinks.parse(intent?.data)?.let { DeepLinks.pending.value = it }
+    }
+
+    /** Leaving the app during a video keeps it playing in a small window (Android 10 and 11; newer versions do it by themselves). */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        ActiveVideo.enterIfPlaying(this)
     }
 
     override fun onStart() {

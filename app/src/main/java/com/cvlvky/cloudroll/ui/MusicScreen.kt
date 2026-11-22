@@ -119,6 +119,7 @@ fun MusicScreen() {
                     }) { Icon(Icons.Filled.Close, "Close search") }
                 } else {
                     IconButton(onClick = { searching = true }) { Icon(Icons.Filled.Search, "Search") }
+                    SettingsAction()
                 }
             },
         )

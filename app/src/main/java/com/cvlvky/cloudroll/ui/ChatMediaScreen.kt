@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -74,7 +76,11 @@ fun ChatMediaScreen(chatId: Long, start: MediaFilter) {
     val scope = rememberCoroutineScope()
     var tabName by rememberSaveable { mutableStateOf(if (start in chatTabs) start.name else MediaFilter.PHOTOS.name) }
     val tab = MediaFilter.valueOf(tabName)
-    val feed = remember(chatId, tab) { Feeds.chat(chatId, tab) }
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var queryInput by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
+    val feed = remember(chatId, tab, query) { Feeds.chat(chatId, tab, query) }
+    val selection = remember { androidx.compose.runtime.mutableStateListOf<String>() }
     val info = Tg.chat(chatId)
     var menu by remember { mutableStateOf(false) }
     var confirmSaveAll by remember { mutableStateOf(false) }
@@ -83,10 +89,31 @@ fun ChatMediaScreen(chatId: Long, start: MediaFilter) {
         if (info?.kind == ChatKind.CHANNEL) sponsored = Repo.sponsored(chatId)
     }
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(Tg.chatTitle(chatId), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        if (selection.isNotEmpty()) SelectionBar(feed, selection) else TopAppBar(
+            title = {
+                if (searching) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = queryInput,
+                        onValueChange = { queryInput = it },
+                        placeholder = { Text("Search in this chat") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    Text(Tg.chatTitle(chatId), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            },
             navigationIcon = { IconButton(onClick = { Nav.back() }) { Icon(Icons.Filled.ArrowBack, "Back") } },
             actions = {
+                if (searching) {
+                    IconButton(onClick = { query = queryInput.trim() }) { Icon(androidx.compose.material.icons.Icons.Filled.Search, "Search") }
+                    IconButton(onClick = {
+                        searching = false
+                        queryInput = ""
+                        query = ""
+                    }) { Icon(androidx.compose.material.icons.Icons.Filled.Close, "Close search") }
+                } else {
+                IconButton(onClick = { searching = true }) { Icon(androidx.compose.material.icons.Icons.Filled.Search, "Search") }
                 IconButton(onClick = { feed.refresh() }) { Icon(Icons.Filled.Refresh, "Refresh") }
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -111,11 +138,15 @@ fun ChatMediaScreen(chatId: Long, start: MediaFilter) {
                         },
                     )
                 }
+                }
             },
         )
         PrimaryScrollableTabRow(selectedTabIndex = chatTabs.indexOf(tab), edgePadding = 8.dp) {
             chatTabs.forEach { f ->
-                Tab(selected = f == tab, onClick = { tabName = f.name }, text = { Text(f.label) })
+                Tab(selected = f == tab, onClick = {
+                    tabName = f.name
+                    selection.clear()
+                }, text = { Text(f.label) })
             }
         }
         val sponsor: @Composable () -> Unit = {
@@ -124,8 +155,15 @@ fun ChatMediaScreen(chatId: Long, start: MediaFilter) {
         when (tab) {
             MediaFilter.PHOTOS, MediaFilter.VIDEOS -> MediaGrid(
                 feed = feed,
+                selection = selection,
                 header = if (sponsored != null) sponsor else null,
-                empty = { EmptyState(Icons.Filled.FolderOpen, "Nothing here", "This chat has no ${tab.label.lowercase()}.") },
+                empty = {
+                    if (query.isNotBlank()) {
+                        EmptyState(Icons.Filled.FolderOpen, "No results", "No ${tab.label.lowercase()} in this chat match \"$query\".")
+                    } else {
+                        EmptyState(Icons.Filled.FolderOpen, "Nothing here", "This chat has no ${tab.label.lowercase()}.")
+                    }
+                },
             )
             else -> MediaList(feed, tab, header = if (sponsored != null) sponsor else null)
         }

@@ -13,6 +13,7 @@ class App : Application() {
         Prefs.init(this)
         Db.init(this)
         Notify.createChannels(this)
+        com.cvlvky.cloudroll.movies.Tmdb.init(this)
         Tg.init(this)
         BackupScheduler.update(this)
     }

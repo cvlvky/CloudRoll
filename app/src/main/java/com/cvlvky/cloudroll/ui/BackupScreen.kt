@@ -115,7 +115,7 @@ fun BackupScreen() {
     val selected = remember(chosen, buckets) { if (access) LocalMedia.chosenBuckets(ctx, chosen) else emptySet() }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Backup") })
+        TopAppBar(title = { Text("Backup") }, actions = { SettingsAction() })
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
