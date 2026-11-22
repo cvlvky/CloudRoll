@@ -21,6 +21,9 @@ android {
         versionCode = buildNumber
         versionName = "1.0.$buildNumber"
         buildConfigField("String", "REPO", "\"cvlvky/CloudRoll\"")
+        // Optional movie keys from repository secrets; the app also takes them in Settings.
+        buildConfigField("String", "TMDB_KEY", "\"${System.getenv("TMDB_API_KEY") ?: ""}\"")
+        buildConfigField("String", "OMDB_KEY", "\"${System.getenv("OMDB_API_KEY") ?: ""}\"")
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -103,4 +106,11 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-session:1.11.1")
+
+    // Images: Coil loads and caches pictures (Telegram files and movie posters); Telephoto zooms
+    // big photos with sub-sampling, so a 50 MP original stays sharp without filling the memory.
+    implementation("io.coil-kt.coil3:coil-compose:3.5.0")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
+    implementation("io.coil-kt.coil3:coil-gif:3.5.0")
+    implementation("me.saket.telephoto:zoomable-image-coil3:0.16.0")
 }
